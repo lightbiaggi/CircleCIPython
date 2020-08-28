@@ -5,7 +5,6 @@ services:
 
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
-  POSTGRES_DB: myproject
 
 cache:
   untracked: true
