@@ -1,6 +1,78 @@
-test:
-    image: python:3
-    script:
-        - pip install flake8 coverage
-        - make test
+image: python:3.6
 
+services:
+  - redis:3.2
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  POSTGRES_DB: myproject
+
+cache:
+  untracked: true
+  key: "test"
+  paths:
+    - .cache/pip
+    - venv/
+
+before_script:
+  - python --version
+  - pip install virtualenv
+  - virtualenv venv
+  - source venv/bin/activate
+  - pip install -r requirements.txt
+
+stages:
+  - pep8
+  - radon
+  - bandit
+  - test
+
+pep8:
+  stage: pep8
+  artifacts:
+    paths:
+      - .cache/pip
+      - venv
+  script:
+    - flake8 --exclude='.git,venv,*migrations*,static/lib' .
+
+radon:
+  stage: radon
+  artifacts:
+    paths:
+      - .cache/pip
+      - venv
+  script:
+    - radon cc -s -a --ignore='venv' .
+    - radon mi -s --ignore='venv' .
+
+bandit:
+  stage: bandit
+  artifacts:
+    paths:
+      - .cache/pip
+      - venv
+  script:
+    - bandit -r --exclude='venv' .
+
+test:
+  stage: test
+  artifacts:
+    paths:
+      - .cache/pip
+      - venv/
+  script:
+    - wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add -
+    - sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
+    - apt-get -y update
+    - apt-get install -y google-chrome-stable
+    - apt-get install -yqq unzip
+    - wget -O /tmp/chromedriver.zip http://chromedriver.storage.googleapis.com/`curl -sS chromedriver.storage.googleapis.com/LATEST_RELEASE`/chromedriver_linux64.zip
+    - unzip /tmp/chromedriver.zip chromedriver -d /usr/local/bin/
+    - python manage.py migrate auth
+    - python manage.py migrate sites
+    - python manage.py migrate
+    - python manage.py collectstatic --noinput
+    - coverage run manage.py test -v 2
+    - coverage report
+  coverage: '/TOTAL.+ ([0-9]{1,3}%)/'
